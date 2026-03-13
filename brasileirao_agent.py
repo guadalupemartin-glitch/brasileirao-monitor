@@ -539,7 +539,7 @@ if __name__ == "__main__":
 """)
     t = threading.Thread(target=monitor_loop, daemon=True)
     t.start()
-    app.run(host="0.0.0.0", port=5001, debug=False, use_reloader=False)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5001)), debug=False, use_reloader=False)
 
 
 # ─── EXCEL EXPORT (se agrega al final del archivo) ───────────────────────────
