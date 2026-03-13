@@ -18,8 +18,6 @@ try:
 except Exception:
     _session = requests.Session()
 from datetime import datetime
-import pytz
-TZ_AR = pytz.timezone("America/Argentina/Buenos_Aires")
 from flask import Flask, jsonify, render_template_string
 from flask_cors import CORS
 
@@ -85,9 +83,47 @@ def update_sheets(resumen: dict):
             resumen.get("minutos_vistos_est", 0),
         ]
         ws.append_row(row)
-        print(f"[Sheets] ✅ Fila agregada: {resumen.get('nombre')} — {resumen.get('titulo','')[:40]}")
+        print(f"[Sheets] ✅ KPIs agregados: {resumen.get('nombre')} — {resumen.get('titulo','')[:40]}")
     except Exception as e:
-        print(f"[Sheets] Error al escribir: {e}")
+        print(f"[Sheets] Error al escribir KPIs: {e}")
+
+def upload_csv_to_sheets(canal: str, nombre: str, fecha: str):
+    """Sube los snapshots del partido a una hoja 'Raw Data' del Google Sheet."""
+    gc = _get_gsheets_client()
+    if not gc:
+        return
+    csv_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "kick_brasileirao_data.csv")
+    if not os.path.exists(csv_path):
+        return
+    try:
+        import csv as _csv
+        sh = gc.open_by_key(SHEETS_SPREADSHEET_ID)
+        # Buscar o crear hoja "Raw Data"
+        try:
+            ws_raw = sh.worksheet("Raw Data")
+        except Exception:
+            ws_raw = sh.add_worksheet(title="Raw Data", rows=10000, cols=15)
+            ws_raw.append_row(["timestamp","canal","nombre","pais","estado",
+                               "viewers_actuales","peak_sesion","avg_viewers",
+                               "followers","titulo_stream","categoria","duracion_min"])
+
+        # Leer solo las filas del canal y partido actual
+        rows_to_upload = []
+        with open(csv_path, encoding="utf-8") as f:
+            reader = _csv.DictReader(f)
+            for row in reader:
+                if row.get("canal") == canal:
+                    rows_to_upload.append([row.get(c, "") for c in [
+                        "timestamp","canal","nombre","pais","estado",
+                        "viewers_actuales","peak_sesion","avg_viewers",
+                        "followers","titulo_stream","categoria","duracion_min"
+                    ]])
+
+        if rows_to_upload:
+            ws_raw.append_rows(rows_to_upload)
+            print(f"[Sheets] ✅ Raw data subida: {len(rows_to_upload)} snapshots de {nombre}")
+    except Exception as e:
+        print(f"[Sheets] Error al subir raw data: {e}")
 
 # ─── CONFIG ──────────────────────────────────────────────────────────────────
 
@@ -113,8 +149,8 @@ KEYWORDS_BRA = [
 ]
 
 INTERVALO     = 60
-CSV_FILE      = os.path.join(os.path.dirname(os.path.abspath(__file__)), "kick_brasileirao_data.csv")
-PARTIDOS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "kick_partidos_resumen.json")
+CSV_FILE      = os.path.expanduser("~/Downloads/kick_brasileirao_data.csv")
+PARTIDOS_FILE = os.path.expanduser("~/Downloads/kick_partidos_resumen.json")
 
 CSV_COLUMNS = [
     "timestamp", "canal", "nombre", "pais", "estado",
@@ -163,7 +199,7 @@ def cerrar_sesion(canal, titulo, nombre, pais):
     conteo = state["conteo_snapshots"].get(canal, 1)
     inicio = state["sesion_inicio"].get(canal)
     avg    = round(suma / conteo) if conteo else 0
-    ahora  = datetime.now(TZ_AR)
+    ahora  = datetime.now()
     dur    = int((ahora - inicio).total_seconds() / 60) if inicio else 0
 
     resumen = {
@@ -185,6 +221,7 @@ def cerrar_sesion(canal, titulo, nombre, pais):
     save_partidos()
     update_excel(resumen)
     update_sheets(resumen)
+    upload_csv_to_sheets(canal, nombre, ahora.strftime("%d/%m/%Y"))
     log_msg(f"📊 Partido cerrado: {nombre} — peak {peak:,} | avg {avg:,} | {dur}min")
 
     for d in [state["peaks_sesion"], state["sumas_viewers"],
@@ -223,7 +260,7 @@ def parse_channel(data, info):
                   peak_sesion=0, avg_viewers=0, followers=0,
                   titulo_stream="", categoria="", duracion_min=0,
                   es_brasileirao=False,
-                  timestamp=datetime.now(TZ_AR).isoformat())
+                  timestamp=datetime.now().isoformat())
 
     if not data:
         return base
@@ -253,7 +290,7 @@ def parse_channel(data, info):
         state["sumas_viewers"][canal]    = state["sumas_viewers"].get(canal, 0) + base["viewers_actuales"]
         state["conteo_snapshots"][canal] = state["conteo_snapshots"].get(canal, 0) + 1
         if canal not in state["sesion_inicio"]:
-            state["sesion_inicio"][canal] = datetime.now(TZ_AR)
+            state["sesion_inicio"][canal] = datetime.now()
         conteo = state["conteo_snapshots"].get(canal, 1)
         base["avg_viewers"] = round(state["sumas_viewers"][canal] / conteo)
 
@@ -271,7 +308,7 @@ def parse_channel(data, info):
 # ─── LOG ─────────────────────────────────────────────────────────────────────
 
 def log_msg(msg):
-    line = f"[{datetime.now(TZ_AR).strftime('%H:%M:%S')}] {msg}"
+    line = f"[{datetime.now().strftime('%H:%M:%S')}] {msg}"
     print(line)
     state["log"].append(line)
     if len(state["log"]) > 30:
@@ -312,7 +349,7 @@ def monitor_loop():
 
         state["canales"]            = snapshot
         state["brasileirao_activo"] = hay_bra
-        state["ultimo_update"]      = datetime.now(TZ_AR).strftime("%d/%m/%Y %H:%M:%S")
+        state["ultimo_update"]      = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
 
         if not hay_bra:
             log_msg("Sin partido activo. Próxima consulta en 60s.")
@@ -608,7 +645,7 @@ if __name__ == "__main__":
 """)
     t = threading.Thread(target=monitor_loop, daemon=True)
     t.start()
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5001)), debug=False, use_reloader=False)
+    app.run(host="0.0.0.0", port=5001, debug=False, use_reloader=False)
 
 
 # ─── EXCEL EXPORT (se agrega al final del archivo) ───────────────────────────
@@ -620,7 +657,7 @@ def update_excel(resumen: dict):
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
     from openpyxl.utils import get_column_letter
 
-    EXCEL_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "kick_brasileirao_kpis.xlsx")
+    EXCEL_FILE = os.path.expanduser("~/Downloads/kick_brasileirao_kpis.xlsx")
 
     COLS = [
         ("Fecha",             "fecha"),
