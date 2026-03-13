@@ -267,6 +267,37 @@ def parse_channel(data, info):
             pass
     return base
 
+# ─── DESCUBRIMIENTO DINAMICO ─────────────────────────────────────────────────
+
+# Set de canales fijos (nunca se eliminan)
+CANALES_FIJOS = {c["canal"] for c in CANALES}
+# Lista dinámica (se expande en runtime)
+_canales_dinamicos: dict = {}  # canal -> {nombre, pais}
+
+def discover_brasileirao_channels():
+    """Busca en Kick todos los canales en vivo con categoría Brazilian Serie A."""
+    try:
+        url = "https://kick.com/api/v2/channels?category=brazilian-serie-a&limit=50"
+        r = _session.get(url, headers=KICK_HEADERS, timeout=10)
+        if r.status_code != 200:
+            # Fallback: buscar por slug de categoría
+            url2 = "https://kick.com/api/v1/categories/brazilian-serie-a/streams?limit=50"
+            r = _session.get(url2, headers=KICK_HEADERS, timeout=10)
+        if r.status_code == 200:
+            data = r.json()
+            canales = data if isinstance(data, list) else data.get("data", [])
+            encontrados = []
+            for ch in canales:
+                slug = ch.get("slug") or ch.get("channel", {}).get("slug", "")
+                nombre = ch.get("user_username") or ch.get("channel", {}).get("username", slug)
+                if slug and slug not in CANALES_FIJOS:
+                    _canales_dinamicos[slug] = {"canal": slug, "nombre": nombre, "pais": "?"}
+                    encontrados.append(slug)
+            if encontrados:
+                log_msg(f"🔍 Canales nuevos detectados: {', '.join(encontrados)}")
+    except Exception as e:
+        print(f"[Discovery] Error: {e}")
+
 # ─── LOG ─────────────────────────────────────────────────────────────────────
 
 def log_msg(msg):
@@ -282,10 +313,19 @@ def monitor_loop():
     init_csv()
     load_partidos()
     log_msg("Agente iniciado. Monitoreando canales...")
+    ciclo = 0
     while True:
+        # Cada 5 ciclos busca canales nuevos con categoría Brazilian Serie A
+        if ciclo % 5 == 0:
+            discover_brasileirao_channels()
+        ciclo += 1
+
+        # Lista combinada: fijos + dinámicos
+        todos_canales = CANALES + [v for v in _canales_dinamicos.values()
+                                    if v["canal"] not in CANALES_FIJOS]
         snapshot = []
         hay_bra  = False
-        for info in CANALES:
+        for info in todos_canales:
             canal  = info["canal"]
             raw    = fetch_channel(canal)
             row    = parse_channel(raw, info)
@@ -303,6 +343,7 @@ def monitor_loop():
                 hist.pop(0)
             time.sleep(0.4)
         state["canales"]            = snapshot
+        state["canales_dinamicos"]     = list(_canales_dinamicos.keys())
         state["brasileirao_activo"] = hay_bra
         state["ultimo_update"]      = datetime.now(TZ_AR).strftime("%d/%m/%Y %H:%M:%S")
         if not hay_bra:
@@ -328,6 +369,7 @@ def api_state():
         "partidos_resumen":   state["partidos_resumen"],
         "log":                state["log"],
         "csv_rows":           csv_rows,
+        "canales_dinamicos":  state.get("canales_dinamicos", []),
     })
 
 @app.route("/")
@@ -433,6 +475,10 @@ canvas{width:100%;height:28px}
   <div class="sheetsbar">
     <span>📊 <strong>Google Sheets</strong> · Brasileirao KPIs 2026</span>
     <span>Datos persistentes · Se actualiza al terminar cada partido</span>
+  </div>
+  <div class="sheetsbar" id="dynbar" style="display:none;border-color:rgba(0,194,68,.3)">
+    <span>🔍 <strong>Canales detectados automáticamente</strong></span>
+    <span id="dynlist" style="color:var(--g2)"></span>
   </div>
   <div class="stitle"><span class="dot" id="mdot" style="opacity:.3"></span>Canales Monitoreados</div>
   <div class="cgrid" id="cgrid"></div>
@@ -553,6 +599,10 @@ async function refresh(){
       <td style="padding:7px 12px;text-align:right">${p.duracion_min}min</td>
       <td style="padding:7px 12px;text-align:right">${fmt(p.minutos_vistos_est)}</td>
     </tr>`).join('');
+  }
+  if(d.canales_dinamicos&&d.canales_dinamicos.length){
+    document.getElementById('dynbar').style.display='flex';
+    document.getElementById('dynlist').textContent=d.canales_dinamicos.join(' · ');
   }
   document.getElementById('log').innerHTML=[...d.log].reverse().map(l=>`<div class="${l.includes('🇧🇷')?'lb':''}">${l}</div>`).join('');
 }
