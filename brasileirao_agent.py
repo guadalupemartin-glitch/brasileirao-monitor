@@ -111,8 +111,8 @@ KEYWORDS_BRA = [
 ]
 
 INTERVALO     = 60
-CSV_FILE      = os.path.expanduser("~/Downloads/kick_brasileirao_data.csv")
-PARTIDOS_FILE = os.path.expanduser("~/Downloads/kick_partidos_resumen.json")
+CSV_FILE      = os.path.join(os.path.dirname(os.path.abspath(__file__)), "kick_brasileirao_data.csv")
+PARTIDOS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "kick_partidos_resumen.json")
 
 CSV_COLUMNS = [
     "timestamp", "canal", "nombre", "pais", "estado",
@@ -618,7 +618,7 @@ def update_excel(resumen: dict):
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
     from openpyxl.utils import get_column_letter
 
-    EXCEL_FILE = os.path.expanduser("~/Downloads/kick_brasileirao_kpis.xlsx")
+    EXCEL_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "kick_brasileirao_kpis.xlsx")
 
     COLS = [
         ("Fecha",             "fecha"),
