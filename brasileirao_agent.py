@@ -21,6 +21,72 @@ from datetime import datetime
 from flask import Flask, jsonify, render_template_string
 from flask_cors import CORS
 
+# ─── GOOGLE SHEETS ───────────────────────────────────────────────────────────
+try:
+    import gspread
+    from google.oauth2.service_account import Credentials as _SACredentials
+    _GSHEETS_OK = True
+except ImportError:
+    _GSHEETS_OK = False
+
+SHEETS_SPREADSHEET_ID = "1tkQdTruSgOa2J7aRCJ8T0eTQMBDbtOVaCx9Uup3SmYI"
+SHEETS_CREDS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "gcp_credentials.json")
+SHEETS_CREDS_JSON = os.environ.get("GCP_CREDENTIALS_JSON", "")
+
+def _get_gsheets_client():
+    if not _GSHEETS_OK:
+        return None
+    try:
+        scopes = ["https://www.googleapis.com/auth/spreadsheets"]
+        if SHEETS_CREDS_JSON:
+            import tempfile
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+                f.write(SHEETS_CREDS_JSON)
+                tmp = f.name
+            creds = _SACredentials.from_service_account_file(tmp, scopes=scopes)
+            os.unlink(tmp)
+        elif os.path.exists(SHEETS_CREDS_FILE):
+            creds = _SACredentials.from_service_account_file(SHEETS_CREDS_FILE, scopes=scopes)
+        else:
+            return None
+        return gspread.authorize(creds)
+    except Exception as e:
+        print(f"[Sheets] Error auth: {e}")
+        return None
+
+def update_sheets(resumen: dict):
+    """Agrega una fila al Google Sheet con los KPIs del partido."""
+    gc = _get_gsheets_client()
+    if not gc:
+        return
+    try:
+        sh = gc.open_by_key(SHEETS_SPREADSHEET_ID)
+        ws = sh.sheet1
+        # Si la hoja está vacía, agregar headers
+        if ws.row_count == 0 or ws.cell(1, 1).value != "Fecha":
+            headers = ["Fecha", "Canal", "Streamer", "País", "Partido",
+                       "Hora Inicio", "Hora Fin", "Duración (min)",
+                       "Peak Viewers", "Avg Viewers", "Snapshots", "Min. Vistos Est."]
+            ws.append_row(headers)
+        row = [
+            resumen.get("fecha", ""),
+            resumen.get("canal", ""),
+            resumen.get("nombre", ""),
+            resumen.get("pais", ""),
+            resumen.get("titulo", ""),
+            resumen.get("hora_inicio", ""),
+            resumen.get("hora_fin", ""),
+            resumen.get("duracion_min", 0),
+            resumen.get("peak_viewers", 0),
+            resumen.get("avg_viewers", 0),
+            resumen.get("total_snapshots", 0),
+            resumen.get("minutos_vistos_est", 0),
+        ]
+        ws.append_row(row)
+        print(f"[Sheets] ✅ Fila agregada: {resumen.get('nombre')} — {resumen.get('titulo','')[:40]}")
+    except Exception as e:
+        print(f"[Sheets] Error al escribir: {e}")
+
 # ─── CONFIG ──────────────────────────────────────────────────────────────────
 
 CANALES = [
@@ -45,8 +111,8 @@ KEYWORDS_BRA = [
 ]
 
 INTERVALO     = 60
-CSV_FILE      = os.path.join(os.path.dirname(os.path.abspath(__file__)), "kick_brasileirao_data.csv")
-PARTIDOS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "kick_partidos_resumen.json")
+CSV_FILE      = os.path.expanduser("~/Downloads/kick_brasileirao_data.csv")
+PARTIDOS_FILE = os.path.expanduser("~/Downloads/kick_partidos_resumen.json")
 
 CSV_COLUMNS = [
     "timestamp", "canal", "nombre", "pais", "estado",
@@ -116,6 +182,7 @@ def cerrar_sesion(canal, titulo, nombre, pais):
     state["partidos_resumen"] = state["partidos_resumen"][:50]
     save_partidos()
     update_excel(resumen)
+    update_sheets(resumen)
     log_msg(f"📊 Partido cerrado: {nombre} — peak {peak:,} | avg {avg:,} | {dur}min")
 
     for d in [state["peaks_sesion"], state["sumas_viewers"],
@@ -539,7 +606,7 @@ if __name__ == "__main__":
 """)
     t = threading.Thread(target=monitor_loop, daemon=True)
     t.start()
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5001)), debug=False, use_reloader=False)
+    app.run(host="0.0.0.0", port=5001, debug=False, use_reloader=False)
 
 
 # ─── EXCEL EXPORT (se agrega al final del archivo) ───────────────────────────
@@ -551,7 +618,7 @@ def update_excel(resumen: dict):
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
     from openpyxl.utils import get_column_letter
 
-    EXCEL_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "kick_brasileirao_kpis.xlsx")
+    EXCEL_FILE = os.path.expanduser("~/Downloads/kick_brasileirao_kpis.xlsx")
 
     COLS = [
         ("Fecha",             "fecha"),
