@@ -1,0 +1,30 @@
+[
+  {
+    "canal": "lacobraaa",
+    "nombre": "La Cobra",
+    "pais": "ARG",
+    "titulo": "PALMEIRAS VS VASCO DA GAMA. TRANSMISIÓN CON DERECHOS DE IMAGEN. RELATO CON TEO DE 412. VIENE GASTÓN EDUL.  FINALISIMA Y VELADA 2026.",
+    "fecha": "12/03/2026",
+    "hora_inicio": "19:23",
+    "hora_fin": "21:32",
+    "duracion_min": 129,
+    "peak_viewers": 9918,
+    "avg_viewers": 8075,
+    "total_snapshots": 111,
+    "minutos_vistos_est": 1041675
+  },
+  {
+    "canal": "spiderkongtv",
+    "nombre": "SpiderKong",
+    "pais": "MEX",
+    "titulo": "VASCO X PALMEIRAS COM IMAGENS PARA LATAM!",
+    "fecha": "12/03/2026",
+    "hora_inicio": "19:25",
+    "hora_fin": "21:32",
+    "duracion_min": 126,
+    "peak_viewers": 40,
+    "avg_viewers": 26,
+    "total_snapshots": 108,
+    "minutos_vistos_est": 3276
+  }
+]
