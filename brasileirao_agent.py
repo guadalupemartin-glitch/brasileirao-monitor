@@ -904,4 +904,4 @@ if __name__ == "__main__":
     t.start()
 
     # Flask en el hilo principal
-    app.run(host="0.0.0.0", port=5001, debug=False, use_reloader=False)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5001)), debug=False, use_reloader=False)
