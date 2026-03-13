@@ -117,6 +117,12 @@ CANALES = [
     {"canal": "pipesierra",        "nombre": "Pipe Sierra",       "pais": "COL"},
     {"canal": "stagtv",            "nombre": "StagTV",            "pais": "MEX"},
     {"canal": "spiderkongtv",      "nombre": "SpiderKong",        "pais": "MEX"},
+    {"canal": "golden_alex",       "nombre": "Escorpion Dorado",  "pais": "MEX"},
+    {"canal": "fabriuruguayo",     "nombre": "Fabriuruguayo",     "pais": "URU"},
+    {"canal": "santigrizas19",     "nombre": "Santi Griza",       "pais": "ARG"},
+    {"canal": "cesarguerreros3",   "nombre": "Cesarguerreros",    "pais": "COL"},
+    {"canal": "ignalopez32",       "nombre": "Ignacion Lopez",    "pais": "ARG"},
+    {"canal": "elapostadorcol",    "nombre": "Elapostadorcol",    "pais": "COL"},
 ]
 
 KEYWORDS_BRA = [
@@ -224,7 +230,8 @@ def parse_channel(data, info):
                   timestamp=datetime.now(TZ_AR).isoformat())
     if not data:
         return base
-    base["followers"] = data.get("followersCount") or data.get("followers_count") or 0
+    base["followers"] = (data.get("followersCount") or data.get("followers_count") or
+                          (data.get("user") or {}).get("followers_count", 0) or 0)
     ls = data.get("livestream")
     if not ls:
         return base
@@ -233,8 +240,13 @@ def parse_channel(data, info):
     base["titulo_stream"]    = ls.get("session_title") or ""
     cats = ls.get("categories") or []
     base["categoria"] = cats[0].get("name") or "" if cats else ""
-    texto = (base["titulo_stream"] + " " + base["categoria"]).lower()
-    base["es_brasileirao"] = any(kw in texto for kw in KEYWORDS_BRA)
+    categoria_lower = base["categoria"].lower()
+    titulo_lower = base["titulo_stream"].lower()
+    es_bra_categoria = any(cat in categoria_lower for cat in [
+        "brazilian serie a", "brasileirao", "brasileirão", "serie a brasileira"
+    ])
+    es_bra_titulo = any(kw in titulo_lower for kw in KEYWORDS_BRA)
+    base["es_brasileirao"] = es_bra_categoria or es_bra_titulo
     prev = state["peaks_sesion"].get(canal, 0)
     if base["viewers_actuales"] > prev:
         state["peaks_sesion"][canal] = base["viewers_actuales"]
