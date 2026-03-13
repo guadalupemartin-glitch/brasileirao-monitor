@@ -18,6 +18,8 @@ try:
 except Exception:
     _session = requests.Session()
 from datetime import datetime
+import pytz
+TZ_AR = pytz.timezone("America/Argentina/Buenos_Aires")
 from flask import Flask, jsonify, render_template_string
 from flask_cors import CORS
 
@@ -161,7 +163,7 @@ def cerrar_sesion(canal, titulo, nombre, pais):
     conteo = state["conteo_snapshots"].get(canal, 1)
     inicio = state["sesion_inicio"].get(canal)
     avg    = round(suma / conteo) if conteo else 0
-    ahora  = datetime.now()
+    ahora  = datetime.now(TZ_AR)
     dur    = int((ahora - inicio).total_seconds() / 60) if inicio else 0
 
     resumen = {
@@ -221,7 +223,7 @@ def parse_channel(data, info):
                   peak_sesion=0, avg_viewers=0, followers=0,
                   titulo_stream="", categoria="", duracion_min=0,
                   es_brasileirao=False,
-                  timestamp=datetime.now().isoformat())
+                  timestamp=datetime.now(TZ_AR).isoformat())
 
     if not data:
         return base
@@ -251,7 +253,7 @@ def parse_channel(data, info):
         state["sumas_viewers"][canal]    = state["sumas_viewers"].get(canal, 0) + base["viewers_actuales"]
         state["conteo_snapshots"][canal] = state["conteo_snapshots"].get(canal, 0) + 1
         if canal not in state["sesion_inicio"]:
-            state["sesion_inicio"][canal] = datetime.now()
+            state["sesion_inicio"][canal] = datetime.now(TZ_AR)
         conteo = state["conteo_snapshots"].get(canal, 1)
         base["avg_viewers"] = round(state["sumas_viewers"][canal] / conteo)
 
@@ -269,7 +271,7 @@ def parse_channel(data, info):
 # ─── LOG ─────────────────────────────────────────────────────────────────────
 
 def log_msg(msg):
-    line = f"[{datetime.now().strftime('%H:%M:%S')}] {msg}"
+    line = f"[{datetime.now(TZ_AR).strftime('%H:%M:%S')}] {msg}"
     print(line)
     state["log"].append(line)
     if len(state["log"]) > 30:
@@ -310,7 +312,7 @@ def monitor_loop():
 
         state["canales"]            = snapshot
         state["brasileirao_activo"] = hay_bra
-        state["ultimo_update"]      = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+        state["ultimo_update"]      = datetime.now(TZ_AR).strftime("%d/%m/%Y %H:%M:%S")
 
         if not hay_bra:
             log_msg("Sin partido activo. Próxima consulta en 60s.")
